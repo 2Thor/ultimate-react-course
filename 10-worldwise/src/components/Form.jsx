@@ -1,11 +1,18 @@
 // "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=0&longitude=0"
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import "react-datepicker/dist/react-datepicker.css";
 
 import styles from "./Form.module.css";
 import Button from "./Button";
-// import BackButton from "./BackButton";
+import BackButton from "./BackButton";
+import { useUrlPosition } from "../hooks/useUrlPosition";
+import { useEffect } from "react";
+import Message from "./Message";
+import Spinner from "./Spinner";
+import DatePicker from "react-datepicker";
+import { useCities } from "../contexts/CitiesContext";
+import { useNavigate } from "react-router-dom";
 
 export function convertToEmoji(countryCode) {
   const codePoints = countryCode
@@ -14,35 +21,105 @@ export function convertToEmoji(countryCode) {
     .map((char) => 127397 + char.charCodeAt());
   return String.fromCodePoint(...codePoints);
 }
+const BASE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client";
 
 function Form() {
   const [cityName, setCityName] = useState("");
   // const [country, setCountry] = useState("");
-  const [date, setDate] = useState(new Date());
+
   const [notes, setNotes] = useState("");
+  const [lat, lng] = useUrlPosition();
+  // eslint-disable-next-line no-unused-vars
+  const [date, setDate] = useState(new Date());
+  // eslint-disable-next-line no-unused-vars
+  const [isLoadingGecoding, setIsLoadingGecoding] = useState(false);
+  const [emoji, setEmoji] = useState();
+  const [geocodingError, setGeocodingError] = useState("");
+  const [startDate, setStartDate] = useState(new Date());
+  const { createCity, isLoading } = useCities();
+  const [country, setCountry] = useState("");
   const navigate = useNavigate();
 
+  useEffect(
+    function () {
+      if (!lat && !lng) return;
+      async function fetchCityData() {
+        try {
+          setIsLoadingGecoding(true);
+          setGeocodingError("");
+          const res = await fetch(
+            `${BASE_URL}?latitude=${lat}&longitude=${lng}`
+          );
+          const data = await res.json();
+
+          if (!data.countryCode)
+            throw new Error(
+              "That doesn't seem to be a city. Click somewhere else 😊"
+            );
+
+          setCityName(data.city || data.locality || "");
+          setCountry(data.countryName);
+          setEmoji(convertToEmoji(data.countryCode));
+        } catch (err) {
+          setGeocodingError(err.message);
+        } finally {
+          setIsLoadingGecoding(false);
+        }
+      }
+      fetchCityData();
+    },
+    [lat, lng]
+  );
+
+  if (isLoadingGecoding) return <Spinner />;
+
+  if (!lat && !lng)
+    return <Message message="Start by clicking somewhere on the map" />;
+
+  if (geocodingError) return <Message message={geocodingError} />;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    if (!cityName || !date) return;
+
+    const newCity = {
+      cityName,
+      country,
+      emoji,
+      date,
+      notes,
+      position: { lat, lng },
+    };
+
+    await createCity(newCity);
+    navigate("/app/cities");
+  }
+
   return (
-    <form className={styles.form}>
+    <form
+      className={`${styles.form} ${isLoading ? styles.loading : ""}`}
+      onSubmit={handleSubmit}
+    >
+      {" "}
       <div className={styles.row}>
         <label htmlFor="cityName">City name</label>
         <input
           id="cityName"
           onChange={(e) => setCityName(e.target.value)}
-          value={cityName}
+          value={cityName + "  " + emoji}
         />
         {/* <span className={styles.flag}>{emoji}</span> */}
       </div>
-
       <div className={styles.row}>
         <label htmlFor="date">When did you go to {cityName}?</label>
-        <input
+        <DatePicker
           id="date"
-          onChange={(e) => setDate(e.target.value)}
-          value={date}
+          selected={startDate}
+          onChange={(date) => setStartDate(date)}
+          dateFormat="dd/MM/yyyy"
         />
       </div>
-
       <div className={styles.row}>
         <label htmlFor="notes">Notes about your trip to {cityName}</label>
         <textarea
@@ -51,20 +128,9 @@ function Form() {
           value={notes}
         />
       </div>
-
       <div className={styles.buttons}>
         <Button type="primary">Add</Button>
-        <Button
-          onClick={(e) => {
-            e.preventDefault();
-            navigate(-1);
-          }}
-          type="back"
-        >
-          &larr; Back
-        </Button>
-
-        {/* <BackButton /> */}
+        <BackButton />
       </div>
     </form>
   );
