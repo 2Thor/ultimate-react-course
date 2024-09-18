@@ -17,4 +17,7 @@ Lunch the server :`npm run server`
 
 # With Vite.JS
 
-1- ``npm create vite@4```
+1- ` npm create vite@4```
+2 -  `npm i eslint vite-plugin-eslint eslint-config-react-app --save-dev``
+3 - create eslint.json file
+4 - install eslint extension vscode
